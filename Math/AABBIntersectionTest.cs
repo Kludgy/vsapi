@@ -85,7 +85,7 @@ namespace Vintagestory.API.MathTools
             float maxDistanceSq = (maxDistance + 1) * (maxDistance + 1);
 
             // Wander along the block exiting faces until we collide with a block selection box
-            while (!RayIntersectsBlockSelectionBox(pos, filter, testCollide))
+            while (!RayIntersectsNeighborhoodBlockSelectionBox(pos, filter, testCollide))
             {
                 if (distanceSq >= maxDistanceSq) return null;
 
@@ -110,6 +110,56 @@ namespace Vintagestory.API.MathTools
             };
         }
 
+        // Enumeration of all (27) integer cartesian coordinates on the <-1..1> cube range.
+        private static readonly (int X, int Y, int Z)[] BlockPosNeighborhood = new[]
+        {
+            (-1,-1,-1), ( 0,-1,-1), ( 1,-1,-1),
+            (-1, 0,-1), ( 0, 0,-1), ( 1, 0,-1),
+            (-1, 1,-1), ( 0, 1,-1), ( 1, 1,-1),
+            (-1,-1, 0), ( 0,-1, 0), ( 1,-1, 0),
+            (-1, 0, 0), ( 0, 0, 0), ( 1, 0, 0),
+            (-1, 1, 0), ( 0, 1, 0), ( 1, 1, 0),
+            (-1,-1, 1), ( 0,-1, 1), ( 1,-1, 1),
+            (-1, 0, 1), ( 0, 0, 1), ( 1, 0, 1),
+            (-1, 1, 1), ( 0, 1, 1), ( 1, 1, 1),
+        };
+
+        // Test all neighboring block hit boxes to resolve issues with ray casts missing (small) hit boxes that 
+        // extend beyond their associated block bounds.
+        //
+        // This is a hack to bandaid a class of confusing UX issues interacting with hitboxes that extend beyond
+        // their block bounds. (Corner/edge snapped beam hitboxes are the motivating example.) When this happens,
+        // the hitbox may not be selected when the player targets it because the associated block coordinate is
+        // missed by the block traversal scheme.
+        //
+        // This code should be removed if a reworked design supporting transblock shapes resolves underlying
+        // design limitations.
+        //
+        // Revised limitations:
+        //  * Does not choose the nearest intersection across blocks.
+        //  * AABBs larger than a block may still extend beyond the BlockPosNeighborhood <-1..1> cube.
+        //  * Introduces 27x block queries per step. Needs profiling to measure cache coherence & GC pressure
+        //     in practice. (Underlying call costs?)
+        //
+        private bool RayIntersectsNeighborhoodBlockSelectionBox(BlockPos pos, BlockFilter filter, bool testCollide)
+        {
+            // NB. Avoiding generation of more non-local GC pressure with heap objects like IVec3 here.
+            // If there are value-typed vec3 (and block pos?), they should be preferred.
+            (int X, int Y, int Z) = (pos.X, pos.Y, pos.Z);
+
+            foreach ((int DeltaX, int DeltaY, int DeltaZ) in BlockPosNeighborhood)
+            {
+                pos.Set(X + DeltaX, Y + DeltaY, Z + DeltaZ);
+                if (RayIntersectsBlockSelectionBox(pos, filter, testCollide))
+                {
+                    return true;
+                }
+            }
+
+            // No intersection, recover original pos values for next pass.
+            pos.Set(X, Y, Z);
+            return false;
+        }
 
         Block blockIntersected;
         public bool RayIntersectsBlockSelectionBox(BlockPos pos, BlockFilter filter, bool testCollide = false)
