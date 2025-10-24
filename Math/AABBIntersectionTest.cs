@@ -200,19 +200,19 @@ namespace Vintagestory.API.MathTools
                 // Does intersect this plane somewhere (only negative because we are not interested in the ray leaving a face, negative because the ray points into the cube, the plane normal points away from the cube)
                 if (demon < -0.00001)
                 {
-                    Vec3d planeCenterPosition = blockSideFacing.PlaneCenter
-                        .ToVec3d()
-                        .Mul(w, h, l)
-                        .Add(selectionBox.X1, selectionBox.Y1, selectionBox.Z1)
+                    FastVec3d planeCenterPosition = blockSideFacing.PlaneCenter
+                        .ToFastVec3d()
+                        .MulCopy(w, h, l)
+                        .AddCopy(selectionBox.X1, selectionBox.Y1, selectionBox.Z1)
                     ;
 
-                    Vec3d pt = Vec3d.Sub(planeCenterPosition, ray.origin);
+                    FastVec3d pt = planeCenterPosition.SubCopy(ray.origin.ToFastVec3d());
                     double t = (pt.X * planeNormal.X + pt.Y * planeNormal.Y + pt.Z * planeNormal.Z) / demon;
 
                     if (t >= 0)
                     {
-                        hitPosition = new Vec3d(ray.origin.X + ray.dir.X * t, ray.origin.Y + ray.dir.Y * t, ray.origin.Z + ray.dir.Z * t);
-                        lastExitedBlockFacePos = Vec3d.Sub(hitPosition, planeCenterPosition);
+                        ray.origin.ToFastVec3d().AddCopy(ray.dir.ToFastVec3d().MulCopy(t, t, t)).CopyIntoVec3d(ref hitPosition);
+                        hitPosition.ToFastVec3d().SubCopy(planeCenterPosition).CopyIntoVec3d(ref lastExitedBlockFacePos);
 
                         // Does intersect this plane within the block
                         if (Math.Abs(lastExitedBlockFacePos.X) <= w / 2 && Math.Abs(lastExitedBlockFacePos.Y) <= h / 2 && Math.Abs(lastExitedBlockFacePos.Z) <= l / 2)
