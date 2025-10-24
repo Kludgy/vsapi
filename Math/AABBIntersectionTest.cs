@@ -18,7 +18,7 @@ namespace Vintagestory.API.MathTools
 
 
     // Based on https://www.scratchapixel.com/lessons/3d-basic-rendering/minimal-ray-tracer-rendering-simple-shapes/ray-plane-and-ray-disk-intersection
-    // Our picking ray will always be a block at any position along the ray, because empty areas are considered air blocks. 
+    // Our picking ray will always be a block at any position along the ray, because empty areas are considered air blocks.
     // So what we are really interested in is on what block face is the ray exiting and continue search in that direction
     // => This code is a ray-intersects-plane algo. It wanders along the exiting faces of full blocks and checks at each position for collisions with the blocks selection box
     // TODO: Replace with Slab method? -> https://tavianator.com/fast-branchless-raybounding-box-intersections/
@@ -38,7 +38,7 @@ namespace Vintagestory.API.MathTools
         public int hitOnSelectionBox = 0;
 
 
-        
+
 
         public AABBIntersectionTest(IWorldIntersectionSupplier blockSelectionTester)
         {
