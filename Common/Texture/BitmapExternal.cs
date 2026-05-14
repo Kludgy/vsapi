@@ -18,38 +18,64 @@ namespace Vintagestory.API.Common
 
     public class BitmapExternal : BitmapRef
     {
-        public SKBitmap bmp;
 
-        public override int Height => bmp.Height;
+        private SKBitmap _bmp;
 
-        public override int Width => bmp.Width;
+        /// <summary>_bmp.IsNull backing store.</summary>
+        private bool _bmpIsNull = true;
 
-        public override int[] Pixels => Array.ConvertAll(bmp.Pixels, p => (int)(uint)p);
+        /// <summary>_bmp.Info backing store.</summary>
+        private SKImageInfo _imageInfo;
 
-        public IntPtr PixelsPtrAndLock => bmp.GetPixels();
-
-        #nullable disable
-        [Obsolete("This requires to manually set the underlying SKBitmap, prefer other overloads.")]
-        public BitmapExternal()
+        /// <summary>Assign internal SKBitmap reference and immediately retrieve frequently accessed information.</summary>
+        private void SetBmpInternal(SKBitmap newBmp)
         {
+            _bmp = newBmp ?? throw new NullReferenceException("newBmp");
+            _bmpIsNull = _bmp.IsNull;
+            _imageInfo = _bmpIsNull ? new SKImageInfo() : _bmp.Info;
         }
-        #nullable restore
+
+        /// <summary>Assigns a new default 1x1 orange image as the internal SKBitmap reference.</summary>
+        private void SetPlaceholderBmpInternal()
+        {
+            SetBmpInternal(new SKBitmap(1, 1));
+            if (!_bmpIsNull)
+            {
+                _bmp.SetPixel(0, 0, SKColors.Orange);
+            }
+        }
+
+        /// <returns>Reference to the internally managed SKBitmap object.</returns>
+        /// <remarks>This operation can return an SKBitmap whose wrapped native object pointer is either null, or will become null.
+        /// The caller must prove !SKBitmap.IsNull when using SKBitmap features that rely on native SK API calls.</remarks>
+        public SKBitmap UnsafeGetInternalSkBitmap() => _bmp;
+
+        [Obsolete("Use UnsafeGetInternalSkBitmap() to make it clear that this operation has non-trivial hazards.")]
+        public SKBitmap bmp => _bmp;
+
+        public override int Height => _imageInfo.Height;
+
+        public override int Width => _imageInfo.Width;
+
+        public override int[] Pixels => _bmpIsNull ? Array.Empty<int>() : Array.ConvertAll(_bmp.Pixels, p => (int)(uint)p);
+
+        public IntPtr PixelsPtrAndLock => _bmpIsNull ? 0 : _bmp.GetPixels();
 
         public BitmapExternal(SKBitmap bmp)
         {
-            this.bmp = bmp;
+            SetBmpInternal(bmp);
         }
 
         public BitmapExternal(int width, int height)
         {
-            bmp = new SKBitmap(width, height);
+            SetBmpInternal(new SKBitmap(width, height));
         }
 
         public BitmapExternal(MemoryStream ms, ILogger logger, AssetLocation? loc = null)
         {
             try
             {
-                bmp = Decode(ms.ToArray());
+                SetBmpInternal(Decode(ms.ToArray()));
             }
             catch (Exception e)
             {
@@ -63,8 +89,7 @@ namespace Vintagestory.API.Common
                     logger.Error("Failed loading bitmap. Will default to an empty 1x1 bitmap.");
                     logger.Error(e);
                 }
-                bmp = new SKBitmap(1, 1);
-                bmp.SetPixel(0, 0, SKColors.Orange);
+                SetPlaceholderBmpInternal();
             }
         }
 
@@ -75,7 +100,7 @@ namespace Vintagestory.API.Common
         {
             try
             {
-                bmp = Decode(File.ReadAllBytes(filePath));
+                SetBmpInternal(Decode(File.ReadAllBytes(filePath)));
             }
             catch (Exception ex)
             {
@@ -84,8 +109,7 @@ namespace Vintagestory.API.Common
                     logger.Error(ex);
                 }
 
-                bmp = new SKBitmap(1, 1);
-                bmp.SetPixel(0, 0, SKColors.Orange);
+                SetPlaceholderBmpInternal();
             }
         }
 
@@ -98,7 +122,7 @@ namespace Vintagestory.API.Common
             {
                 var buffer = new byte[stream.Length];
                 stream.ReadExactly(buffer);
-                bmp = Decode(buffer);
+                SetBmpInternal(Decode(buffer));
             }
             catch (Exception ex)
             {
@@ -107,8 +131,7 @@ namespace Vintagestory.API.Common
                     logger.Error(ex);
                 }
 
-                bmp = new SKBitmap(1, 1);
-                bmp.SetPixel(0, 0, SKColors.Orange);
+                SetPlaceholderBmpInternal();
             }
         }
 
@@ -119,14 +142,13 @@ namespace Vintagestory.API.Common
         {
             try
             {
-                bmp = Decode(data.AsSpan()[..dataLength]);
+                SetBmpInternal(Decode(data.AsSpan()[..dataLength]));
             }
             catch (Exception ex)
             {
                 logger.Error("Failed loading bitmap from data. Will default to an empty 1x1 bitmap.");
                 logger.Error(ex);
-                bmp = new SKBitmap(1, 1);
-                bmp.SetPixel(0, 0, SKColors.Orange);
+                SetPlaceholderBmpInternal();
             }
         }
 
@@ -148,12 +170,18 @@ namespace Vintagestory.API.Common
 
         public override void Dispose()
         {
-            bmp.Dispose();
+            _bmp.Dispose();
+            _bmpIsNull = true;
+            _imageInfo = new SKImageInfo();
         }
 
         public override void Save(string filename)
         {
-            bmp.Save(filename);
+            if (_bmpIsNull)
+            {
+                throw new NullReferenceException("Cannot save: _bmpIsNull");
+            }
+            _bmp.Save(filename);
         }
 
         /// <summary>
@@ -164,7 +192,7 @@ namespace Vintagestory.API.Common
         /// <returns></returns>
         public override SKColor GetPixel(int x, int y)
         {
-            return bmp.GetPixel(x, y);
+            return _bmpIsNull ? new SKColor() : _bmp.GetPixel(x, y);
         }
 
         /// <summary>
@@ -175,14 +203,18 @@ namespace Vintagestory.API.Common
         /// <returns></returns>
         public override SKColor GetPixelRel(float x, float y)
         {
-            return bmp.GetPixel((int)Math.Min(bmp.Width - 1, x * bmp.Width), (int)Math.Min(bmp.Height - 1, (y * bmp.Height)));
+            return _bmpIsNull ? new SKColor() : _bmp.GetPixel((int)Math.Min(_imageInfo.Width - 1, x * _imageInfo.Width), (int)Math.Min(_imageInfo.Height - 1, (y * _imageInfo.Height)));
         }
 
         public override unsafe void MulAlpha(int alpha = 255)
         {
+            if (_bmpIsNull)
+            {
+                return;
+            }
             var len = Width * Height;
             var af = alpha / 255f;
-            var colp = (byte*)bmp.GetPixels().ToPointer();
+            var colp = (byte*)_bmp.GetPixels().ToPointer();
             for (var i = 0; i < len; i++)
             {
                 int a = colp[3];
@@ -197,11 +229,15 @@ namespace Vintagestory.API.Common
 
         public override int[] GetPixelsTransformed(int rot = 0, int mulAlpha = 255)
         {
+            if (_bmpIsNull)
+            {
+                return Array.Empty<int>();
+            }
             int[] bmpPixels = new int[Width * Height];
-            int width = bmp.Width;
-            int height = bmp.Height;
+            int width = _imageInfo.Width;
+            int height = _imageInfo.Height;
             FastBitmap fastBitmap = new FastBitmap();
-            fastBitmap.bmp = bmp;
+            fastBitmap.bmp = _bmp;
             int stride = fastBitmap.Stride;
             switch (rot)
             {
@@ -276,17 +312,21 @@ namespace Vintagestory.API.Common
 
         public override BitmapExternal CropTo(int newSize)
         {
+            if (_bmpIsNull)
+            {
+                return new BitmapExternal(0, 0);
+            }
             SKBitmap bmpPixels = new(newSize,newSize);
-            int width = bmp.Width;
-            int height = bmp.Height;
+            int width = _imageInfo.Width;
+            int height = _imageInfo.Height;
             int centerOffsetX = (width - newSize);
             int centerOffsetY = 0;
-            int brown = (29 << 16) + (11 << 8) + 1; 
+            int brown = (29 << 16) + (11 << 8) + 1;
             for (int x = 0; x < newSize; x++)
             {
                 for (int y = 0; y < newSize; y++)
                 {
-                    var color = bmp.GetPixel(x + centerOffsetX, y + centerOffsetY);
+                    var color = _bmp.GetPixel(x + centerOffsetX, y + centerOffsetY);
                     int alpha = (int)((uint)color >> 24);
                     if (alpha < 255)
                     {
